@@ -1,54 +1,74 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat Mar 20 23:10:24 2021
-
-@author: vetur
-"""
-
-from tensorflow import keras
-model = keras.models.load_model('thirdModel.h5')
-
 import pickle
-cv = pickle.load(open('finalCVObject.pkl','rb'))
-mostFrequentWords = pickle.load(open('frequentWords.pkl','rb'))
-mostFrequentStems = pickle.load(open('frequentStems.pkl','rb'))
-
+import re
+import string
 from nltk.corpus import stopwords
 from nltk.stem.porter import PorterStemmer
-import re
-ps = PorterStemmer()
-from nltk.corpus import wordnet
+from tensorflow import keras
+from keras.preprocessing.sequence import pad_sequences
 
-for _ in range(10):
-    testInp = input("enter your input : ")
-    description = re.sub("[^a-zA-Z]", " ",testInp)
-    description = description.lower()
-    description = description.split()
-    new = []
-    for word in description:
-        if word not in set(stopwords.words("english")):
-            if ps.stem(word) in mostFrequentStems:
-                new.append(ps.stem(word))
-            else:
-                for i in range(len(mostFrequentWords)):
-                    try:
-                        y = mostFrequentWords[i]
-                        name1 = wordnet.synsets(word)[0].name()
-                        first_word = wordnet.synset(name1)
-                        name2 = wordnet.synsets(y)[0].name()
-                        second_word = wordnet.synset(name2)
-                        #print(first_word.wup_similarity(second_word))
-                        if first_word.wup_similarity(second_word) > 0.8:
-                            #print(x,y)
-                            #print('Similarity: ' + str(first_word.wup_similarity(second_word)))
-                            new.append(ps.stem(y))
-                            break
-                    except:
-                        pass
-    #description = [ps.stem(word) for word in description if word not in set(stopwords.words("english"))]
-    description = (" ").join(new)
-    description = cv.transform([description]).toarray()
-    #print(description)
-    result = model.predict(description)
 
-    print(result)
+def remove_URL(text):
+    url = re.compile(r"https?://\S+|www\.\S+")
+    return url.sub(r"", text)
+
+
+def remove_html(text):
+    html = re.compile(r"<.*?>")
+    return html.sub(r"", text)
+
+
+def remove_emoji(string):
+    emoji_pattern = re.compile(
+        "["
+        u"\U0001F600-\U0001F64F"  # emoticons
+        u"\U0001F300-\U0001F5FF"  # symbols & pictographs
+        u"\U0001F680-\U0001F6FF"  # transport & map symbols
+        u"\U0001F1E0-\U0001F1FF"  # flags (iOS)
+        u"\U00002702-\U000027B0"
+        u"\U000024C2-\U0001F251"
+        "]+",
+        flags=re.UNICODE,
+    )
+    return emoji_pattern.sub(r"", string)
+
+
+def remove_punct(text):
+    table = str.maketrans("", "", string.punctuation)
+    return text.translate(table)
+
+
+def remove_stopwords_and_stem(text):
+    global ps
+    text = [ps.stem(word.lower()) for word in text.split() if word.lower() not in set(stopwords.words("english"))]
+    return " ".join(text)
+
+
+
+def load_assets():
+    global model, tokenizer, ps
+    ps = PorterStemmer()
+    model = keras.models.load_model('Models/FirstLSTM.h5')
+    tokenizer = pickle.load(open('Models/FirstLSTM_tokenizer.pkl', 'rb'))
+
+
+max_length = 20
+load_assets()
+
+text = input('Enter your input: ')
+while text != 'stop':
+    text = remove_URL(text)
+    text = remove_html(text)
+    text = remove_emoji(text)
+    text = remove_punct(text)
+    text = remove_stopwords_and_stem(text)
+
+    text = tokenizer.texts_to_sequences([text])
+    text = pad_sequences(text, maxlen=max_length, padding="post", truncating="post")
+    #print(text)
+    result = model.predict(text)
+    if result[0][0] >= 0.5:
+        print('Prediction: Offensive')
+    else:
+        print('Prediction: Non-Offensive')
+
+    text = input('Enter your input: ')
